@@ -11,7 +11,7 @@ library(stringr)
 # library(scales)
 library(DT)
 
-taxi <- read_delim("taxi.tsv",delim="\t",show_col_types = FALSE)
+taxi <- read_delim("taxi_reduced.tsv",delim="\t",show_col_types = FALSE)
 
 names(taxi) <- c("Trip_Start_Time","Trip_Seconds","Trip_Miles","Pickup_Community_Area",
                  "Dropoff_Community_Area","Company")
@@ -28,6 +28,7 @@ areas$area_no <- sapply(areas$area_no, as.integer)
 
 areas <- rbind(areas, list(100, "outside community"))
 areas <- rbind(areas, list(0, "All"))
+
 
 #Create a dataframe to store daily data
 daily_data<-count(taxi,date(Trip_Start_Time))
@@ -55,6 +56,8 @@ names(binned_miles) <- c("Binned_Mileage","Rides")
 timebins <- taxi  %>% mutate(bins = cut(Trip_Seconds, breaks=10))
 binned_time <- count(timebins, bins)
 names(binned_time) <- c("Binned_Trip_Time", "Rides")
+
+
 
 
 
@@ -191,23 +194,21 @@ ui <- dashboardPage(
 server <- function(input, output){
   
   output$plotdaily <- renderPlot(
-    ggplot(daily_data, aes(x=Date, y=Rides)) + geom_bar(stat="identity", fill="steelblue")
+    ggplot(daily_data, aes(x=Date,y=Rides)) + geom_bar(stat="identity",fill="steelblue")
   )
   
   output$dailytable <- DT::renderDataTable({
-    daily_data }, rownames=FALSE, options=list(pageLength=7))
+    daily_data},rownames=FALSE,options=list(pageLength=7))
   
   output$plothour12 <- renderPlot(
     hourly_data  %>% arrange(Hour1)  %>% 
       mutate(Hour=factor(Hour, levels=Hour))  %>% 
-      ggplot(aes(x=Hour, y=Rides)) + 
-      geom_bar(stat="identity", fill="steelblue") +  
+      ggplot(aes(x=Hour,y=Rides)) + geom_bar(stat="identity",fill="steelblue") +  
       theme(axis.text.x = element_text(angle = 90))
   )
   
   output$plothour24 <- renderPlot(
-    ggplot(hourly_data, aes(x=Hour1, y=Rides)) + 
-      geom_bar(stat="identity", fill="steelblue") +
+    ggplot(hourly_data, aes(x=Hour1,y=Rides)) + geom_bar(stat="identity",fill="steelblue") +
       theme(axis.text.x = element_text(angle = 90))
   )
   
@@ -218,8 +219,7 @@ server <- function(input, output){
     select(hourly_data, Hour1, Rides)}, rownames=FALSE, options=list(pageLength=7))
   
   output$plotweek <- renderPlot(
-    ggplot(weekday_data, aes(x=Weekday, y=Rides)) + 
-      geom_bar(stat="identity", fill="steelblue") +
+    ggplot(weekday_data, aes(x=Weekday, y=Rides)) + geom_bar(stat="identity", fill="steelblue") +
       theme(axis.text.x = element_text(angle = 90))
   )
   
@@ -234,8 +234,7 @@ server <- function(input, output){
     monthly_data}, rownames=FALSE, options=list(pageLength=7))
   
   output$plotmiles <- renderPlot(
-    ggplot(binned_miles, aes(x=Binned_Mileage, y=Rides)) + 
-      geom_bar(stat="identity", fill="steelblue") +
+    ggplot(binned_miles, aes(x=Binned_Mileage, y=Rides)) + geom_bar(stat="identity", fill="steelblue") +
       theme(axis.text.x = element_text(angle = 90))
   )
   
@@ -243,8 +242,7 @@ server <- function(input, output){
     binned_miles}, rownames=FALSE, options=list(pageLength=7))
   
   output$plottime <- renderPlot(
-    ggplot(binned_time, aes(x=Binned_Trip_Time, y=Rides)) +
-      geom_bar(stat="identity", fill="steelblue") +
+    ggplot(binned_time, aes(x=Binned_Trip_Time, y=Rides)) + geom_bar(stat="identity", fill="steelblue") +
       theme(axis.text.x = element_text(angle = 90))
   )
   
@@ -255,13 +253,13 @@ server <- function(input, output){
                if(input$community!="All"){
                  area_community <- subset(areas,community_name==input$community)[[1]]
                  taxi_community <- subset(taxi,taxi["Dropoff_Community_Area"]==area_community)
-                 length <- nrow(taxi_community)
                  taxi_community <- count(taxi_community,Pickup_Community_Area)
-                 taxi_community["n"] <- (taxi_community["n"]/length)*100
+                 taxi_community["n"] <- (taxi_community["n"]/121760)*100
                  names(taxi_community) <- c("area_numbe","Rides")
+                 taxi_community <- drop_na(taxi_community)
                  neighborhoods_raw <- merge(neighborhoods_raw,taxi_community,by="area_numbe")
-                 View(neighborhoods_raw)
-                 pal <- colorQuantile("YlOrRd", domain = neighborhoods_raw$Rides,6)
+                 bins <- c(0,0.000821,0.009239,0.034083,0.250698,1.282051,16.55)
+                 pal <- colorBin("YlOrRd", domain = neighborhoods_raw$Rides, bins = bins)
                  output$community_areas <- renderLeaflet({
                    leaflet::leaflet() %>%
                      addTiles()  %>%
