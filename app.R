@@ -60,7 +60,9 @@ ui <- dashboardPage(
       tabItem(
         tabName="dashboard",
         fluidRow(column(2,
-                        selectInput(inputId="community",label="Choose a Community Area",areas$community_name,selected="All")),
+                        selectInput(inputId="community",label="Choose a Community Area",areas$community_name,selected="All"),
+                        radioButtons("heatmaptype","Heatmap",choices = c("To","From"),selected="To",
+                                     inline=TRUE)),
           column(4,
                         conditionalPanel(
                           condition ="input.dailytype =='Table'",
@@ -71,7 +73,7 @@ ui <- dashboardPage(
                           plotOutput("plotdaily")
                         ),
                         radioButtons("dailytype","View",choices = c("Table","Graph"),selected="Graph",
-                                     inline=TRUE),background="blue"),
+                                     inline=TRUE)),
                  column(3,
                         conditionalPanel(
                           condition = "input.hour == '12hour' ",
@@ -250,17 +252,27 @@ server <- function(input, output){
   output$timetable <- DT::renderDataTable({
     bintime()},rownames=FALSE,options=list(pageLength=7))
   
-  observeEvent(input$community,
+  observeEvent({
+    input$community
+    input$heatmaptype
+    },
                if(input$community!="All"){
                  area_community <- subset(areas,community_name==input$community)[[1]]
-                 taxi_community <- subset(taxi,taxi["Dropoff_Community_Area"]==area_community)
-                 length <- nrow(taxi_community)
-                 taxi_community <- count(taxi_community,Pickup_Community_Area)
+                 if(input$heatmaptype == "To"){
+                   taxi_community <- subset(taxi,taxi["Dropoff_Community_Area"]==area_community)
+                   length <- nrow(taxi_community)
+                   taxi_community <- count(taxi_community,Pickup_Community_Area)
+                 }
+                 else{
+                   taxi_community <- subset(taxi,taxi["Pickup_Community_Area"]==area_community)
+                   length <- nrow(taxi_community)
+                   taxi_community <- count(taxi_community,Dropoff_Community_Area)
+                 }
                  taxi_community["n"] <- (taxi_community["n"]/length)*100
                  names(taxi_community) <- c("area_numbe","Rides")
                  neighborhoods_raw <- merge(neighborhoods_raw,taxi_community,by="area_numbe")
                  View(neighborhoods_raw)
-                 pal <- colorQuantile("YlOrRd", domain = neighborhoods_raw$Rides,6)
+                 pal <- colorBin("YlOrRd", domain = neighborhoods_raw$Rides,6)
                  output$community_areas <- renderLeaflet({
                    leaflet::leaflet() %>%
                      addTiles()  %>%
