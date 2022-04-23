@@ -98,14 +98,7 @@ ui <- dashboardPage(
       tabItem(
         tabName="dashboard",
         fluidRow(column(2,
-                        conditionalPanel(
-                          condition = "input.outside == 'Disable'",
-                          selectInput(inputId="community",label="Choose a Community Area",areas$community_name,selected="All")
-                        ),
-                        conditionalPanel(
-                          condition = "input.outside == 'Enable'",
-                          selectInput(inputId="community",label="Choose a Community Area",areas_w_outside$community_name,selected="All")
-                        ),
+                        selectInput(inputId="community",label="Choose a Community Area",areas$community_name, selected="All"),
                         selectInput(inputId="taxi",label="Choose a taxi company",taxi_companies,selected="All"),
                         radioButtons("outside", "Outside of Chicago", choices = c("Enable","Disable"), selected="Disable",
                                      inline=TRUE),
@@ -212,10 +205,26 @@ ui <- dashboardPage(
 )
 
 
-server <- function(input, output){
+server <- function(input, output, session){
+  
+  observe({
+    if(input$outside == 'Enable') {
+      updateSelectInput(session, "community",
+                        choices = areas_w_outside,
+                        selected = "All"
+      )
+    }
+    else {
+      updateSelectInput(session, "community",
+                        choices = areas,
+                        selected = "All"
+      )
+    }
+  })
   
   area_community <- eventReactive({
     input$community
+    input$outside
   },if(input$community!="All"){
     area_community <- subset(areas,community_name==input$community)[[1]]
     area_community
@@ -224,6 +233,7 @@ server <- function(input, output){
   
   taxi_outside_filter <- eventReactive({
     input$outside
+    input$community
   },
   if(input$outside == 'Enable'){
     taxi
