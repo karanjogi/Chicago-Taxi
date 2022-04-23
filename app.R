@@ -215,10 +215,6 @@ server <- function(input, output){
   }
   )
   
-  
-  
-  
-  
   taxi_filter_company <- eventReactive({
     input$taxi
   },
@@ -269,7 +265,11 @@ server <- function(input, output){
     }
   }
   else {
-    daily_to_community_data
+    daily_community <- taxi_community() %>%
+      group_by(Pickup_Community_Area, Trip_Start_Time) %>%
+      summarise(n = n())
+    names(daily_community) <- c("Pickup_Community_Area","Trip_Start_Time","n")
+    daily_community
   }
   )
   
@@ -304,7 +304,6 @@ server <- function(input, output){
       h_data <- arrange(h_data, Hour1)
       h_data
     })
-  
   
   output$plothour12 <- renderPlot({
     hourly_data() %>% arrange(Hour1) %>% 
