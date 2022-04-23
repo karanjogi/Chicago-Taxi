@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 library(shiny)
 library(shinydashboard)
 library(lubridate)
@@ -58,12 +57,18 @@ monthly_data <- count(taxi , month(Trip_Start_Time, label=TRUE))
 names(monthly_data) <- c("Month","Rides")
 
 #Create a dataframe to store binned miles data
-milesbins <- taxi  %>% mutate(bins = cut(Trip_Miles, breaks=10))
+taxi["Trip_Kilometers"] <- taxi["Trip_Miles"] * 1.609
+milesbins <- taxi  %>% mutate(bins = cut(Trip_Miles, breaks=8))
+kmbins <- taxi %>% mutate(bins = cut(Trip_Kilometers, breaks=8))
+binned_km <- count(kmbins, bins)
 binned_miles <- count(milesbins, bins)
+names(binned_km) <- c("Binned_Mileage","Rides")
 names(binned_miles) <- c("Binned_Mileage","Rides")
 
+
 #Create a dataframe to store binned trip time data
-timebins <- taxi  %>% mutate(bins = cut(Trip_Seconds, breaks=10))
+taxi["Trip_Minutes"] <- taxi["Trip_Seconds"]/60
+timebins <- taxi  %>% mutate(bins = cut(Trip_Minutes, breaks=12))
 binned_time <- count(timebins, bins)
 names(binned_time) <- c("Binned_Trip_Time", "Rides")
 
@@ -97,16 +102,19 @@ ui <- dashboardPage(
         p("The app is written as part of course Project")),
       tabItem(
         tabName="dashboard",
-        fluidRow(column(3,
+        fluidRow(column(2,
                         selectInput(inputId="community",label="Choose a Community Area",areas$community_name,selected="All"),
+                        radioButtons("heatmaptype","Heatmap",choices = c("To","From"),selected="To",
+                                     inline=TRUE),
                         radioButtons("viztype", "View", choices = c("Table","Graph"), selected="Graph",
                                      inline=TRUE),
                         radioButtons("hour", "Time", choices = c("12hour", "24hour"), selected="12hour",
                                      inline=TRUE),
-                        background="blue"),
+                        radioButtons("distance", "Distance", choices = c("Km", "Miles"), selected="Miles",
+                                     inline=TRUE)),
                  
                  
-                 column(5,
+                 column(4,
                         conditionalPanel(
                           condition ="input.viztype =='Table'",
                           dataTableOutput("dailytable")
@@ -117,7 +125,7 @@ ui <- dashboardPage(
                         )
                  ),
                  
-                 column(2,
+                 column(3,
                         conditionalPanel(
                           condition = "input.hour == '12hour' ",
                           conditionalPanel(
@@ -142,7 +150,7 @@ ui <- dashboardPage(
                         )
                  ),
                  
-                 column(2,
+                 column(3,
                         conditionalPanel(
                           condition ="input.viztype =='Table'",
                           dataTableOutput("monthtable")
@@ -190,8 +198,7 @@ ui <- dashboardPage(
         column(3,
                leafletOutput("community_areas"))),
         fluidRow(column(6,
-                        plotOutput("communitybar")
-        )
+                        plotOutput("communitybar"))
         )
       )
     )
@@ -244,14 +251,28 @@ server <- function(input, output){
   output$monthtable <- DT::renderDataTable({
     monthly_data}, rownames=FALSE, options=list(pageLength=7))
   
-  output$plotmiles <- renderPlot(
-    ggplot(binned_miles, aes(x=Binned_Mileage, y=Rides)) + 
-      geom_bar(stat="identity", fill="steelblue") +
-      theme(axis.text.x = element_text(angle = 90))
-  )
+  observeEvent(input$distance,
+               if(input$distance == "Miles"){
+                 output$plotmiles <- renderPlot(
+                   ggplot(binned_miles, aes(x=Binned_Mileage, y=Rides)) + 
+                     geom_bar(stat="identity", fill="steelblue") +
+                     theme(axis.text.x = element_text(angle = 90))
+                 )
+                 
+                 output$milestable <- DT::renderDataTable({
+                   binned_miles}, rownames=FALSE, options=list(pageLength=7))
+               }
+               else{
+                 output$plotmiles <- renderPlot(
+                   ggplot(binned_km, aes(x=Binned_Mileage, y=Rides)) + 
+                     geom_bar(stat="identity", fill="steelblue") +
+                     theme(axis.text.x = element_text(angle = 90))
+                 )
+                 
+                 output$milestable <- DT::renderDataTable({
+                   binned_km}, rownames=FALSE, options=list(pageLength=7))
+               })
   
-  output$milestable <- DT::renderDataTable({
-    binned_miles}, rownames=FALSE, options=list(pageLength=7))
   
   output$plottime <- renderPlot(
     ggplot(binned_time, aes(x=Binned_Trip_Time, y=Rides)) +
@@ -262,17 +283,30 @@ server <- function(input, output){
   output$timetable <- DT::renderDataTable({
     binned_time}, rownames=FALSE, options=list(pageLength=7))
   
-  observeEvent(input$community,
+  observeEvent({
+    input$community
+    input$heatmaptype
+  },
                if(input$community!="All"){
                  area_community <- subset(areas,community_name==input$community)[[1]]
+                 if(input$heatmaptype == "To"){
+                   taxi_community <- subset(taxi,taxi["Dropoff_Community_Area"]==area_community)
+                   length <- nrow(taxi_community)
+                   taxi_community <- count(taxi_community,Pickup_Community_Area)
+                 }
+                 else{
+                   taxi_community <- subset(taxi,taxi["Pickup_Community_Area"]==area_community)
+                   length <- nrow(taxi_community)
+                   taxi_community <- count(taxi_community,Dropoff_Community_Area)
+                 }
+                 taxi_community["n"] <- (taxi_community["n"]/length)*100
                  taxi_community <- subset(taxi,taxi["Dropoff_Community_Area"]==area_community)
                  length <- nrow(taxi_community)
                  taxi_community <- count(taxi_community,Pickup_Community_Area)
                  taxi_community["n"] <- (taxi_community["n"]/length)*100
                  names(taxi_community) <- c("area_numbe","Rides")
-                 neighborhoods_raw <- merge(neighborhoods_raw,taxi_community,by="area_numbe")
-                 View(neighborhoods_raw)
-                 pal <- colorQuantile("YlOrRd", domain = neighborhoods_raw$Rides,6)
+                 neighborhoods_raw <- merge(neighborhoods_raw,taxi_community,by="area_numbe",all.x=TRUE)
+                 pal <- colorBin("YlOrRd", domain = neighborhoods_raw$Rides,6)
                  output$community_areas <- renderLeaflet({
                    leaflet::leaflet() %>%
                      addTiles()  %>%
