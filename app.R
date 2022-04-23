@@ -43,19 +43,26 @@ names(daily_from_community_data) <- c("Pickup_Community_Area","Trip_Start_Time",
 
 #Create a dataframe to store binned miles data
 taxi["Trip_Kilometers"] <- taxi["Trip_Miles"] * 1.609
+
+taxi["Trip_Minutes"] <- taxi["Trip_Seconds"]/60
+
+taxi["Trip_Kilometers"] <- taxi["Trip_Miles"] * 1.609
+
 milesbins <- taxi  %>% mutate(bins = cut(Trip_Miles, breaks=8))
 kmbins <- taxi %>% mutate(bins = cut(Trip_Kilometers, breaks=8))
-binned_km <- count(kmbins, bins)
-binned_miles <- count(milesbins, bins)
-names(binned_km) <- c("Binned_Mileage","Rides")
-names(binned_miles) <- c("Binned_Mileage","Rides")
+# binned_km <- count(kmbins, bins)
+# binned_miles <- count(milesbins, bins)
+# names(binned_km) <- c("Binned_Mileage","Rides")
+# names(binned_miles) <- c("Binned_Mileage","Rides")
 
 
-#Create a dataframe to store binned trip time data
+# Create a dataframe to store binned trip time data
+
 taxi["Trip_Minutes"] <- taxi["Trip_Seconds"]/60
+
 timebins <- taxi  %>% mutate(bins = cut(Trip_Minutes, breaks=12))
-binned_time <- count(timebins, bins)
-names(binned_time) <- c("Binned_Trip_Time", "Rides")
+# binned_time <- count(timebins, bins)
+# names(binned_time) <- c("Binned_Trip_Time", "Rides")
 
 taxi_companies <- unique(taxi$Company)
 taxi_companies <- append(taxi_companies,"All")
@@ -93,6 +100,8 @@ ui <- dashboardPage(
         fluidRow(column(2,
                         selectInput(inputId="community",label="Choose a Community Area",areas$community_name,selected="All"),
                         selectInput(inputId="taxi",label="Choose a taxi company",taxi_companies,selected="All"),
+                        radioButtons("outside", "Outside of Chicago", choices = c("Enable","Disable"), selected="Disable",
+                                     inline=TRUE),
                         radioButtons("heatmaptype","Heatmap",choices = c("To","From"),selected="To",
                                      inline=TRUE),
                         radioButtons("viztype", "View", choices = c("Table","Graph"), selected="Graph",
@@ -200,12 +209,40 @@ server <- function(input, output){
   
   area_community <- eventReactive({
     input$community
-  },{
-    if(input$community!="All")
+  },if(input$community!="All"){
     area_community <- subset(areas,community_name==input$community)[[1]]
     area_community
-  }
+    }
   )
+  
+  taxi_community <- eventReactive({
+    input$community
+    input$heatmaptype
+  },if(input$community!="All"){
+    if(input$heatmaptype=="To"){
+      taxi_community <- subset(taxi,Dropoff_Community_Area==area_community())
+      taxi_community
+    }
+    else{
+      taxi_community <- subset(taxi,Pickup_Community_Area==area_community())
+      taxi_community
+    }
+  })
+  
+  daily_community <- eventReactive({
+    input$community
+    input$heatmaptype
+  },
+  if(input$community!="All"){
+    if(input$heatmaptype=="To"){
+      daily_community <- daily_to_community_data %>% subset(Dropoff_Community_Area==area_community())
+      daily_community
+    }
+    else{
+      daily_community <- daily_from_community_data %>% subset(Pickup_Community_Area==area_community())
+      daily_community
+    }
+    })
   
   daily_data <- eventReactive({
     input$community
@@ -218,21 +255,12 @@ server <- function(input, output){
       d_data
     }
     else{
-      if(input$heatmaptype == "to"){
-        d_data <- daily_to_community_data %>% subset(Dropoff_Community_Area==area_community()) %>% 
+        d_data <- daily_community() %>% 
           group_by(date(Trip_Start_Time)) %>%
           summarise(n = sum(n)) 
         names(d_data) <- c("Date","Rides")
         d_data
-      }
-      else{
-        d_data <- daily_from_community_data %>% subset(Pickup_Community_Area==area_community()) %>% 
-          group_by(date(Trip_Start_Time)) %>%
-          summarise(n = sum(n))
-        names(d_data) <- c("Date","Rides")
-        d_data
-      }
-    })
+      })
   
   output$plotdaily <- renderPlot(
     ggplot(daily_data(), aes(x=Date, y=Rides)) + geom_bar(stat="identity", fill="steelblue")
@@ -253,27 +281,17 @@ server <- function(input, output){
       h_data
     }
     else{
-      if(input$heatmaptype == "to"){
-        h_data<- daily_from_community_data  %>% subset(Dropoff_Community_Area==area_community()) %>% 
+        h_data<- daily_community() %>% 
           group_by(format(Trip_Start_Time,"%X"),format(Trip_Start_Time,"%H")) %>% 
           summarise(n = sum(n))
         names(h_data) <- c("Hour","Hour1","Rides")
         h_data <- arrange(h_data, Hour1)
         h_data
-      }
-      else{
-        h_data<- daily_from_community_data  %>% subset(Pickup_Community_Area==area_community()) %>% 
-          group_by(format(Trip_Start_Time,"%X"),format(Trip_Start_Time,"%H")) %>% 
-          summarise(n = sum(n))
-        names(h_data) <- c("Hour","Hour1","Rides")
-        h_data <- arrange(h_data, Hour1)
-        h_data
-      }
-    })
+      })
   
   
   output$plothour12 <- renderPlot({
-    hourly_data() %>% arrange(Hour1)
+    hourly_data() %>% arrange(Hour1) %>% 
       mutate(Hour=factor(Hour, levels=Hour)) %>% 
       ggplot(aes(x=Hour, y=Rides)) + 
       geom_bar(stat="identity", fill="steelblue") +  
@@ -288,7 +306,7 @@ server <- function(input, output){
   )
   
   output$hourtable12 <- DT::renderDataTable({
-    select(hourly_data(), Hour, Rides)}, rownames=FALSE, options=list(pageLength=7))
+    select(hourly_data(),Hour, Rides)}, rownames=FALSE, options=list(pageLength=7))
   
   output$hourtable24 <- DT::renderDataTable({
     select(hourly_data(), Hour1, Rides)}, rownames=FALSE, options=list(pageLength=7))
@@ -297,28 +315,17 @@ server <- function(input, output){
     input$community
     input$heatmaptype}, 
     if(input$community == "All"){
-      w_data<- daily_to_community_data %>%
-        group_by(wday(Trip_Start_Time,label=TRUE)) %>%
+      w_data<- daily_to_community_data %>% group_by(wday(Trip_Start_Time,label=TRUE)) %>%
         summarise(n = sum(n))
       names(w_data) <- c("Weekday","Rides")
       w_data
     }
     else{
-      if(input$heatmaptype == "to"){
-        w_data <- daily_to_community_data %>% subset(Dropoff_Community_Area==area_community()) %>% 
-          group_by(wday(Trip_Start_Time,label=TRUE)) %>%
-          summarise(n = sum(n)) 
-        names(w_data) <- c("Weekday","Rides")
-        w_data
-      }
-      else{
-        w_data <- daily_from_community_data %>% subset(Pickup_Community_Area==area_community()) %>% 
-          group_by(wday(Trip_Start_Time,label=TRUE)) %>%
-          summarise(n = sum(n))
-        names(w_data) <- c("Weekday","Rides")
-        w_data
-      }
-    })
+      w_data <- daily_community() %>%  group_by(wday(Trip_Start_Time,label=TRUE)) %>%
+        summarise(n = sum(n)) 
+      names(w_data) <- c("Weekday","Rides")
+      w_data
+      })
   
   output$plotweek <- renderPlot(
     ggplot(weekday_data(), aes(x=Weekday, y=Rides)) + 
@@ -340,20 +347,11 @@ server <- function(input, output){
       m_data
     }
     else{
-      if(input$heatmaptype == "to"){
-        m_data <- daily_to_community_data %>% subset(Dropoff_Community_Area==area_community()) %>% 
+        m_data <- daily_community() %>% 
           group_by(month(Trip_Start_Time,label=TRUE)) %>%
           summarise(n = sum(n)) 
         names(m_data) <- c("Month","Rides")
         m_data
-      }
-      else{
-        m_data <- daily_from_community_data %>% subset(Pickup_Community_Area==area_community()) %>% 
-          group_by(month(Trip_Start_Time,label=TRUE)) %>%
-          summarise(n = sum(n))
-        names(m_data) <- c("Month","Rides")
-        m_data
-      }
     })
   
   output$plotmonth <- renderPlot(
@@ -363,37 +361,81 @@ server <- function(input, output){
   output$monthtable <- DT::renderDataTable({
     monthly_data()}, rownames=FALSE, options=list(pageLength=7))
   
+  binned_miles_r <- eventReactive({
+    input$community
+    input$heatmaptype
+  },if(input$community == "All"){
+    binned_miles <- count(milesbins, bins)
+    names(binned_miles) <- c("Binned_Mileage","Rides")
+    binned_miles
+  }
+  else{
+    milesbins_c <- taxi_community() %>% mutate(bins = cut(Trip_Miles, breaks=8))
+    binned_miles_c <- count(milesbins_c, bins)
+    names(binned_miles_c) <- c("Binned_Mileage","Rides")
+    binned_miles_c
+  })
+  
+  binned_km_r <- eventReactive({
+    input$community
+    input$heatmaptype
+  },if(input$community == "All"){
+    binned_km <- count(kmbins, bins)
+    names(binned_km) <- c("Binned_Mileage","Rides")
+    binned_km
+  }else{
+    kmbins_c <- taxi_community() %>% mutate(bins = cut(Trip_Kilometers, breaks=8))
+    binned_km_c <- count(kmbins_c, bins)
+    names(binned_km_c) <- c("Binned_Mileage","Rides")
+    binned_km_c
+  })
+  
+  
   observeEvent(input$distance,
                if(input$distance == "Miles"){
                  output$plotmiles <- renderPlot(
-                   ggplot(binned_miles, aes(x=Binned_Mileage, y=Rides)) + 
+                   ggplot(binned_miles_r(), aes(x=Binned_Mileage, y=Rides)) +
                      geom_bar(stat="identity", fill="steelblue") +
                      theme(axis.text.x = element_text(angle = 90))
                  )
-                 
+
                  output$milestable <- DT::renderDataTable({
-                   binned_miles}, rownames=FALSE, options=list(pageLength=7))
+                   binned_miles_r()}, rownames=FALSE, options=list(pageLength=7))
                }
                else{
                  output$plotmiles <- renderPlot(
-                   ggplot(binned_km, aes(x=Binned_Mileage, y=Rides)) + 
+                   ggplot(binned_km_r(), aes(x=Binned_Mileage, y=Rides)) +
                      geom_bar(stat="identity", fill="steelblue") +
                      theme(axis.text.x = element_text(angle = 90))
                  )
-                 
+
                  output$milestable <- DT::renderDataTable({
-                   binned_km}, rownames=FALSE, options=list(pageLength=7))
+                   binned_km_r()}, rownames=FALSE, options=list(pageLength=7))
                })
   
+  binned_time <- eventReactive({
+    input$community
+    input$heatmaptype
+  },if(input$community == "All"){
+    binned_time <- count(timebins, bins)
+    names(binned_time) <- c("Binned_Trip_Time", "Rides")
+    binned_time
+  }
+  else{
+    binned_time_c <- taxi_community() %>% mutate(bins = cut(Trip_Minutes, breaks=8))
+    binned_miles_c <- count(binned_time_c, bins)
+    names(binned_miles_c) <- c("Binned_Trip_Time","Rides")
+    binned_miles_c
+  })
   
   output$plottime <- renderPlot(
-    ggplot(binned_time, aes(x=Binned_Trip_Time, y=Rides)) +
+    ggplot(binned_time(), aes(x=Binned_Trip_Time, y=Rides)) +
       geom_bar(stat="identity", fill="steelblue") +
       theme(axis.text.x = element_text(angle = 90))
   )
   
   output$timetable <- DT::renderDataTable({
-    binned_time}, rownames=FALSE, options=list(pageLength=7))
+    binned_time()}, rownames=FALSE, options=list(pageLength=7))
   
   observeEvent({
     input$community
