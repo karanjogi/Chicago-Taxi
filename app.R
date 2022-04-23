@@ -23,8 +23,8 @@ areas <- tibble(neighborhoods_df$area_numbe, tolower(neighborhoods_df$community)
 names(areas) <- c("area_no", "community_name")
 areas$area_no <- sapply(areas$area_no, as.integer)
 
-areas <- rbind(areas, list(100, "outside community"))
 areas <- rbind(areas, list(0, "All"))
+areas_w_outside <- rbind(areas, list(100, "outside community"))
 
 #Create a dataframe to store daily rides for each community
 daily_to_community_data <- taxi %>%
@@ -98,7 +98,14 @@ ui <- dashboardPage(
       tabItem(
         tabName="dashboard",
         fluidRow(column(2,
-                        selectInput(inputId="community",label="Choose a Community Area",areas$community_name,selected="All"),
+                        conditionalPanel(
+                          condition = "input.outside == 'Disable'",
+                          selectInput(inputId="community",label="Choose a Community Area",areas$community_name,selected="All")
+                        ),
+                        conditionalPanel(
+                          condition = "input.outside == 'Enable'",
+                          selectInput(inputId="community",label="Choose a Community Area",areas_w_outside$community_name,selected="All")
+                        ),
                         selectInput(inputId="taxi",label="Choose a taxi company",taxi_companies,selected="All"),
                         radioButtons("outside", "Outside of Chicago", choices = c("Enable","Disable"), selected="Disable",
                                      inline=TRUE),
@@ -215,14 +222,26 @@ server <- function(input, output){
   }
   )
   
-  taxi_filter_company <- eventReactive({
-    input$taxi
+  taxi_outside_filter <- eventReactive({
+    input$outside
   },
-  if(input$taxi != 'All'){
-    taxi %>% filter(Company == input$taxi)
+  if(input$outside == 'Enable'){
+    taxi
   }
   else{
-    taxi
+    taxi %>% filter(Pickup_Community_Area != 100 & Dropoff_Community_Area != 100)
+  }
+  )
+  
+  taxi_filter_company <- eventReactive({
+    input$taxi
+    input$outside
+  },
+  if(input$taxi != 'All'){
+    taxi_outside_filter() %>% filter(Company == input$taxi)
+  }
+  else{
+    taxi_outside_filter()
   }
   )
   
@@ -230,6 +249,7 @@ server <- function(input, output){
     input$community
     input$heatmaptype
     input$taxi
+    input$outside
   },if(input$community!="All"){
     if(input$heatmaptype == "To"){
       taxi_filter_company() %>% filter(Dropoff_Community_Area == area_community())
@@ -247,6 +267,7 @@ server <- function(input, output){
     input$community
     input$heatmaptype
     input$taxi
+    input$outside
   },
   if(input$community!="All"){
     if(input$heatmaptype=="To"){
@@ -276,7 +297,9 @@ server <- function(input, output){
   daily_data <- eventReactive({
     input$community
     input$heatmaptype
-    input$taxi}, 
+    input$taxi
+    input$outside
+    }, 
     {
       d_data <- daily_community() %>% 
         group_by(date(Trip_Start_Time)) %>%
@@ -295,7 +318,9 @@ server <- function(input, output){
   hourly_data <- eventReactive({
     input$community
     input$heatmaptype
-    input$taxi}, 
+    input$taxi
+    input$outside
+    }, 
     {
       h_data<- daily_community() %>% 
         group_by(format(Trip_Start_Time,"%X"),format(Trip_Start_Time,"%H")) %>% 
@@ -329,7 +354,9 @@ server <- function(input, output){
   weekday_data <- eventReactive({
     input$community
     input$heatmaptype
-    input$taxi}, 
+    input$taxi
+    input$outside
+    }, 
     {
       w_data <- daily_community() %>%  group_by(wday(Trip_Start_Time,label=TRUE)) %>%
         summarise(n = sum(n)) 
@@ -349,7 +376,9 @@ server <- function(input, output){
   monthly_data <- eventReactive({
     input$community
     input$heatmaptype
-    input$taxi}, 
+    input$taxi
+    input$outside
+    }, 
     {
       m_data <- daily_community() %>% 
         group_by(month(Trip_Start_Time,label=TRUE)) %>%
@@ -369,6 +398,7 @@ server <- function(input, output){
     input$community
     input$heatmaptype
     input$taxi
+    input$outside
   },
   {milesbins_c <- taxi_community() %>% mutate(bins = cut(Trip_Miles, breaks=8))
   binned_miles_c <- count(milesbins_c, bins)
@@ -379,6 +409,7 @@ server <- function(input, output){
     input$community
     input$heatmaptype
     input$taxi
+    input$outside
   },{
     kmbins_c <- taxi_community() %>% mutate(bins = cut(Trip_Miles*1.609, breaks=8))
     binned_km_c <- count(kmbins_c, bins)
@@ -413,6 +444,7 @@ server <- function(input, output){
     input$community
     input$heatmaptype
     input$taxi
+    input$outside
   },
   {
     binned_time_c <- taxi_community() %>% mutate(bins = cut(Trip_Minutes, breaks=8))
@@ -434,32 +466,27 @@ server <- function(input, output){
     input$community
     input$heatmaptype
     input$taxi
+    input$outside
   },
   if(input$community!="All"){
     if(input$heatmaptype == "To"){
       if(input$taxi=="All"){
-        taxi_community <- subset(taxi,taxi["Dropoff_Community_Area"]==area_community())
-        length <- nrow(taxi_community)
-        taxi_community <- count(taxi_community,Pickup_Community_Area)
+        length <- nrow(taxi_community())
+        taxi_community <- count(taxi_community() ,Pickup_Community_Area)
       }
       else{
-        taxi_community <- subset(taxi,taxi["Dropoff_Community_Area"]==area_community() & 
-                                   taxi["Company"] == input$taxi)
-        length <- nrow(taxi_community)
-        taxi_community <- count(taxi_community,Pickup_Community_Area)
+        length <- nrow(taxi_community())
+        taxi_community <- count(taxi_community(), Pickup_Community_Area)
       }
     }
     else{
       if(input$taxi=="All"){
-        taxi_community <- subset(taxi,taxi["Pickup_Community_Area"]==area_community())
-        length <- nrow(taxi_community)
-        taxi_community <- count(taxi_community,Dropoff_Community_Area)
+        length <- nrow(taxi_community())
+        taxi_community <- count(taxi_community(),Dropoff_Community_Area)
       }
       else{
-        taxi_community <- subset(taxi,taxi["Pickup_Community_Area"]==area_community() &
-                                   taxi["Company"] == input$taxi)
-        length <- nrow(taxi_community)
-        taxi_community <- count(taxi_community,Dropoff_Community_Area)
+        length <- nrow(taxi_community())
+        taxi_community <- count(taxi_community(), Dropoff_Community_Area)
       }
     }
     taxi_community["n"] <- (taxi_community["n"]/length)*100
@@ -476,13 +503,14 @@ server <- function(input, output){
                            position = "bottomright")
     })
     output$communitybar <- renderPlot({
-      # taxi_community <- merge(areas,taxi_community,by.x="area_no",by.y="Pickup_Community_Area")
-      ggplot(taxi_community,aes(x=area_numbe,y=Rides))+ 
-        geom_bar(stat="identity",fill="steelblue")
+      taxi_community <- merge(areas,taxi_community,by.x="area_no",by.y="area_numbe",all.y=TRUE)
+      ggplot(taxi_community,aes(x=community_name,y=Rides))+ 
+        geom_bar(stat="identity",fill="steelblue") +
+        theme(axis.text.x = element_text(angle = 90))
     })
   }
   else if(input$taxi!="All"){
-    taxi_community <- subset(taxi,taxi["Company"]==input$taxi)
+    taxi_community <- taxi_community()
     if(input$heatmaptype == "To"){
       length <- nrow(taxi_community)
       taxi_community <- count(taxi_community,Pickup_Community_Area)
@@ -505,9 +533,10 @@ server <- function(input, output){
                            position = "bottomright")
     })
     output$communitybar <- renderPlot({
-      # taxi_community <- merge(areas,taxi_community,by.x="area_no",by.y="Pickup_Community_Area")
-      ggplot(taxi_community,aes(x=area_numbe,y=Rides))+ 
-        geom_bar(stat="identity",fill="steelblue")
+      taxi_community <- merge(areas,taxi_community,by.x="area_no",by.y="area_numbe",all.y=TRUE)
+      ggplot(taxi_community,aes(x=community_name,y=Rides))+ 
+        geom_bar(stat="identity",fill="steelblue")  +
+        theme(axis.text.x = element_text(angle = 90))
     })
   })
   
