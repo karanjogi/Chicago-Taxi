@@ -250,29 +250,34 @@ server <- function(input, output){
   daily_community <- eventReactive({
     input$community
     input$heatmaptype
+    input$taxi
   },
   if(input$community!="All"){
     if(input$heatmaptype=="To"){
-      daily_community <- daily_to_community_data %>% subset(Dropoff_Community_Area==area_community())
+      daily_community <- taxi_community() %>%
+        group_by(Dropoff_Community_Area, Trip_Start_Time) %>%
+        summarise(n = n())
+      names(daily_community) <- c("Dropoff_Community_Area","Trip_Start_Time","n")
       daily_community
     }
     else{
-      daily_community <- daily_from_community_data %>% subset(Pickup_Community_Area==area_community())
+      daily_community <- taxi_community() %>%
+        group_by(Pickup_Community_Area, Trip_Start_Time) %>%
+        summarise(n = n())
+      names(daily_community) <- c("Pickup_Community_Area","Trip_Start_Time","n")
       daily_community
     }
-  })
+  }
+  else {
+    daily_to_community_data
+  }
+  )
   
   daily_data <- eventReactive({
     input$community
-    input$heatmaptype}, 
-    if(input$community == "All"){
-      d_data<- daily_to_community_data %>%
-        group_by(date(Trip_Start_Time)) %>%
-        summarise(n = sum(n))
-      names(d_data) <- c("Date","Rides")
-      d_data
-    }
-    else{
+    input$heatmaptype
+    input$taxi}, 
+    {
       d_data <- daily_community() %>% 
         group_by(date(Trip_Start_Time)) %>%
         summarise(n = sum(n)) 
@@ -289,16 +294,9 @@ server <- function(input, output){
   
   hourly_data <- eventReactive({
     input$community
-    input$heatmaptype}, 
-    if(input$community == "All"){
-      h_data<- daily_from_community_data  %>% 
-        group_by(format(Trip_Start_Time,"%X"),format(Trip_Start_Time,"%H")) %>% 
-        summarise(n = sum(n))
-      names(h_data) <- c("Hour","Hour1","Rides")
-      h_data <- arrange(h_data, Hour1)
-      h_data
-    }
-    else{
+    input$heatmaptype
+    input$taxi}, 
+    {
       h_data<- daily_community() %>% 
         group_by(format(Trip_Start_Time,"%X"),format(Trip_Start_Time,"%H")) %>% 
         summarise(n = sum(n))
@@ -331,14 +329,9 @@ server <- function(input, output){
   
   weekday_data <- eventReactive({
     input$community
-    input$heatmaptype}, 
-    if(input$community == "All"){
-      w_data<- daily_to_community_data %>% group_by(wday(Trip_Start_Time,label=TRUE)) %>%
-        summarise(n = sum(n))
-      names(w_data) <- c("Weekday","Rides")
-      w_data
-    }
-    else{
+    input$heatmaptype
+    input$taxi}, 
+    {
       w_data <- daily_community() %>%  group_by(wday(Trip_Start_Time,label=TRUE)) %>%
         summarise(n = sum(n)) 
       names(w_data) <- c("Weekday","Rides")
@@ -356,15 +349,9 @@ server <- function(input, output){
   
   monthly_data <- eventReactive({
     input$community
-    input$heatmaptype}, 
-    if(input$community == "All"){
-      m_data<- daily_to_community_data %>%
-        group_by(month(Trip_Start_Time,label=TRUE)) %>%
-        summarise(n = sum(n))
-      names(m_data) <- c("Month","Rides")
-      m_data
-    }
-    else{
+    input$heatmaptype
+    input$taxi}, 
+    {
       m_data <- daily_community() %>% 
         group_by(month(Trip_Start_Time,label=TRUE)) %>%
         summarise(n = sum(n)) 
