@@ -86,7 +86,22 @@ ui <- dashboardPage(
       menuItem("", tabName = "cheapBlankSpace"),
       menuItem("", tabName = "cheapBlankSpace"),
       menuItem("About Page", tabName = "widgets"),
-      menuItem("Main Page", tabName = "dashboard",selected=TRUE)
+      menuItem("Main Page", tabName = "dashboard",selected=TRUE),
+      menuItem("", tabName = "cheapBlankSpace"),
+      menuItem("", tabName = "cheapBlankSpace"),
+      menuItem(strong("Input for the dashboard"), tabName = "cheapBlankSpace"),
+      selectInput(inputId="community",label="Choose a Community Area",areas$community_name, selected="All"),
+      selectInput(inputId="taxi",label="Choose a taxi company",taxi_companies,selected="All"),
+      radioButtons("outside", "Outside of Chicago", choices = c("Enable","Disable"), selected="Disable",
+                   inline=TRUE),
+      radioButtons("heatmaptype","Heatmap",choices = c("To","From"),selected="To",
+                   inline=TRUE),
+      radioButtons("viztype", "View", choices = c("Table","Graph"), selected="Graph",
+                   inline=TRUE),
+      radioButtons("hour", "Time", choices = c("12hour", "24hour"), selected="12hour",
+                   inline=TRUE),
+      radioButtons("distance", "Distance", choices = c("Km", "Miles"), selected="Miles",
+                   inline=TRUE)
     )
   ),
   dashboardBody(
@@ -94,70 +109,60 @@ ui <- dashboardPage(
       tabItem(
         tabName="widgets",
         h2("About Page"),
-        p("The app is written as part of course Project")),
+        p("The app is written by Abhijeet and Karan Jogi as part of course Project"),
+        p("The data is collected from https://data.cityofchicago.org/Transportation/Taxi-Trips-2019/h4cq-z3dy
+          and the for mapping data is collected from https://data.cityofchicago.org/Facilities-Geographic-Boundaries/Boundaries-Community-Areas-current-/cauq-8yn6"),
+        p("The graphs are made using ggplot2 package and for map leaflet.js for R is used and the for data 
+          manipulation base R is used.")),
       tabItem(
         tabName="dashboard",
-        fluidRow(column(2,
-                        selectInput(inputId="community",label="Choose a Community Area",areas$community_name, selected="All"),
-                        selectInput(inputId="taxi",label="Choose a taxi company",taxi_companies,selected="All"),
-                        radioButtons("outside", "Outside of Chicago", choices = c("Enable","Disable"), selected="Disable",
-                                     inline=TRUE),
-                        radioButtons("heatmaptype","Heatmap",choices = c("To","From"),selected="To",
-                                     inline=TRUE),
-                        radioButtons("viztype", "View", choices = c("Table","Graph"), selected="Graph",
-                                     inline=TRUE),
-                        radioButtons("hour", "Time", choices = c("12hour", "24hour"), selected="12hour",
-                                     inline=TRUE),
-                        radioButtons("distance", "Distance", choices = c("Km", "Miles"), selected="Miles",
-                                     inline=TRUE)),
-                 
-                 
-                 column(4,
-                        conditionalPanel(
-                          condition ="input.viztype =='Table'",
-                          dataTableOutput("dailytable")
-                        ),
-                        conditionalPanel(
-                          condition ="input.viztype == 'Graph'",
-                          plotOutput("plotdaily")
-                        )
+        fluidRow(
+          column(6,
+                 conditionalPanel(
+                   condition ="input.viztype =='Table'",
+                   dataTableOutput("dailytable")
                  ),
-                 
-                 column(3,
-                        conditionalPanel(
-                          condition = "input.hour == '12hour' ",
-                          conditionalPanel(
-                            condition ="input.viztype =='Table'",
-                            dataTableOutput("hourtable12")
-                          ),
-                          conditionalPanel(
-                            condition ="input.viztype =='Graph'",
-                            plotOutput("plothour12")
-                          )
-                        ),
-                        conditionalPanel(
-                          condition = "input.hour == '24hour' ",
-                          conditionalPanel(
-                            condition ="input.viztype =='Table'",
-                            dataTableOutput("hourtable24")
-                          ),
-                          conditionalPanel(
-                            condition ="input.viztype =='Graph'",
-                            plotOutput("plothour24")
-                          )
-                        )
-                 ),
-                 
-                 column(3,
-                        conditionalPanel(
-                          condition ="input.viztype =='Table'",
-                          dataTableOutput("monthtable")
-                        ),
-                        conditionalPanel(
-                          condition ="input.viztype =='Graph'",
-                          plotOutput("plotmonth")
-                        )
+                 conditionalPanel(
+                   condition ="input.viztype == 'Graph'",
+                   plotOutput("plotdaily")
                  )
+          ),
+          
+          column(3,
+                 conditionalPanel(
+                   condition = "input.hour == '12hour' ",
+                   conditionalPanel(
+                     condition ="input.viztype =='Table'",
+                     dataTableOutput("hourtable12")
+                   ),
+                   conditionalPanel(
+                     condition ="input.viztype =='Graph'",
+                     plotOutput("plothour12")
+                   )
+                 ),
+                 conditionalPanel(
+                   condition = "input.hour == '24hour' ",
+                   conditionalPanel(
+                     condition ="input.viztype =='Table'",
+                     dataTableOutput("hourtable24")
+                   ),
+                   conditionalPanel(
+                     condition ="input.viztype =='Graph'",
+                     plotOutput("plothour24")
+                   )
+                 )
+          ),
+          
+          column(3,
+                 conditionalPanel(
+                   condition ="input.viztype =='Table'",
+                   dataTableOutput("monthtable")
+                 ),
+                 conditionalPanel(
+                   condition ="input.viztype =='Graph'",
+                   plotOutput("plotmonth")
+                 )
+          )
         ),
         br(),
         fluidRow(column(3,
@@ -171,7 +176,7 @@ ui <- dashboardPage(
                         )
         ),
         
-        column(3,
+        column(2,
                conditionalPanel(
                  condition ="input.viztype =='Table'",
                  dataTableOutput("milestable")
@@ -182,7 +187,7 @@ ui <- dashboardPage(
                )
         ),
         
-        column(3,
+        column(2,
                conditionalPanel(
                  condition ="input.viztype =='Table'",
                  dataTableOutput("timetable")
@@ -193,7 +198,7 @@ ui <- dashboardPage(
                )
         ),
         
-        column(3,
+        column(5,
                leafletOutput("community_areas"))),
         br(),
         fluidRow(column(6,
@@ -309,14 +314,14 @@ server <- function(input, output, session){
     input$heatmaptype
     input$taxi
     input$outside
-    }, 
-    {
-      d_data <- daily_community() %>% 
-        group_by(date(Trip_Start_Time)) %>%
-        summarise(n = sum(n)) 
-      names(d_data) <- c("Date","Rides")
-      d_data
-    })
+  }, 
+  {
+    d_data <- daily_community() %>% 
+      group_by(date(Trip_Start_Time)) %>%
+      summarise(n = sum(n)) 
+    names(d_data) <- c("Date","Rides")
+    d_data
+  })
   
   output$plotdaily <- renderPlot(
     ggplot(daily_data(), aes(x=Date, y=Rides)) + geom_bar(stat="identity", fill="steelblue")
@@ -330,19 +335,24 @@ server <- function(input, output, session){
     input$heatmaptype
     input$taxi
     input$outside
-    }, 
-    {
-      h_data<- daily_community() %>% 
-        group_by(format(Trip_Start_Time,"%X"),format(Trip_Start_Time,"%H")) %>% 
-        summarise(n = sum(n))
-      names(h_data) <- c("Hour","Hour1","Rides")
-      h_data <- arrange(h_data, Hour1)
-      h_data
-    })
+  }, 
+  {
+    h_data<- daily_community() %>% 
+      group_by(format(Trip_Start_Time,"%X"),format(Trip_Start_Time,"%H")) %>% 
+      summarise(n = sum(n))
+    names(h_data) <- c("Hour","Hour1","Rides")
+    h_data <- arrange(h_data, Hour1)
+    h_data
+  })
   
   output$plothour12 <- renderPlot({
     hourly_data() %>% arrange(Hour1) %>% 
-      mutate(Hour=factor(Hour, levels=Hour)) %>% 
+      mutate(Hour=factor(Hour, levels=c("12:00:00 AM","1:00:00 AM","2:00:00 AM","3:00:00 AM",
+                                               "4:00:00 AM","5:00:00 AM","6:00:00 AM","7:00:00 AM",
+                                               "8:00:00 AM","9:00:00 AM","10:00:00 AM","11:00:00 AM",
+                                               "12:00:00 PM","1:00:00 PM","2:00:00 PM","3:00:00 PM",
+                                               "4:00:00 PM","5:00:00 PM","6:00:00 PM","7:00:00 PM",
+                                               "8:00:00 PM","9:00:00 PM","10:00:00 PM","11:00:00 PM"))) %>% 
       ggplot(aes(x=Hour, y=Rides)) + 
       geom_bar(stat="identity", fill="steelblue") +  
       theme(axis.text.x = element_text(angle = 90))
@@ -366,13 +376,13 @@ server <- function(input, output, session){
     input$heatmaptype
     input$taxi
     input$outside
-    }, 
-    {
-      w_data <- daily_community() %>%  group_by(wday(Trip_Start_Time,label=TRUE)) %>%
-        summarise(n = sum(n)) 
-      names(w_data) <- c("Weekday","Rides")
-      w_data
-    })
+  }, 
+  {
+    w_data <- daily_community() %>%  group_by(wday(Trip_Start_Time,label=TRUE)) %>%
+      summarise(n = sum(n)) 
+    names(w_data) <- c("Weekday","Rides")
+    w_data
+  })
   
   output$plotweek <- renderPlot(
     ggplot(weekday_data(), aes(x=Weekday, y=Rides)) + 
@@ -388,14 +398,14 @@ server <- function(input, output, session){
     input$heatmaptype
     input$taxi
     input$outside
-    }, 
-    {
-      m_data <- daily_community() %>% 
-        group_by(month(Trip_Start_Time,label=TRUE)) %>%
-        summarise(n = sum(n)) 
-      names(m_data) <- c("Month","Rides")
-      m_data
-    })
+  }, 
+  {
+    m_data <- daily_community() %>% 
+      group_by(month(Trip_Start_Time,label=TRUE)) %>%
+      summarise(n = sum(n)) 
+    names(m_data) <- c("Month","Rides")
+    m_data
+  })
   
   output$plotmonth <- renderPlot(
     ggplot(monthly_data(), aes(x=Month, y=Rides)) + geom_bar(stat="identity", fill="steelblue")
@@ -510,10 +520,16 @@ server <- function(input, output, session){
         leaflet::addPolygons(data = neighborhoods_raw,color = "#444444", weight = 1, smoothFactor = 0.5,
                              opacity = 1.0, fillOpacity = 0.5,fillColor = ~pal(Rides))  %>%
         leaflet::addLegend(data = neighborhoods_raw,pal = pal, values = ~Rides, opacity = 0.7, title = NULL,
-                           position = "bottomright")
+                           position = "bottomright") %>% 
+        leaflet::addRectangles(
+          lng1=-87.542883, lat1=41.892358,
+          lng2=-87.490020, lat2=41.806340,
+          fillColor = "transparent"
+        )
     })
     output$communitybar <- renderPlot({
       taxi_community <- merge(areas,taxi_community,by.x="area_no",by.y="area_numbe",all.y=TRUE)
+      taxi_community[is.na(taxi_community)] <- "z Outside"
       ggplot(taxi_community,aes(x=community_name,y=Rides))+ 
         geom_bar(stat="identity",fill="steelblue") +
         theme(axis.text.x = element_text(angle = 90))
@@ -540,10 +556,15 @@ server <- function(input, output, session){
         leaflet::addPolygons(data = neighborhoods_raw,color = "#444444", weight = 1, smoothFactor = 0.5,
                              opacity = 1.0, fillOpacity = 0.5,fillColor = ~pal(Rides))  %>%
         leaflet::addLegend(data = neighborhoods_raw,pal = pal, values = ~Rides, opacity = 0.7, title = NULL,
-                           position = "bottomright")
+                           position = "bottomright") %>% 
+        leaflet::addRectangles(lng1=-87.542883, lat1=41.892358,
+                               lng2=-87.490020, lat2=41.806340,
+                               fillColor = "transparent"
+        )
     })
     output$communitybar <- renderPlot({
       taxi_community <- merge(areas,taxi_community,by.x="area_no",by.y="area_numbe",all.y=TRUE)
+      taxi_community[is.na(taxi_community)] <- "z Outside"
       ggplot(taxi_community,aes(x=community_name,y=Rides))+ 
         geom_bar(stat="identity",fill="steelblue")  +
         theme(axis.text.x = element_text(angle = 90))
